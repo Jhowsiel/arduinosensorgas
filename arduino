@@ -1,0 +1,51 @@
+// Definição de constantes
+const int pinSensor = A0;   // Pino do Sensor de Gás/Fumaça
+const int Rele = 3;         // Pino do Relé
+const int buzzer = 2;       // Pino do Buzzer
+const int ValDesarm = 1;    // Valor do Sensor para disparar o alarme
+const int frequencia = 4000; // Frequência inicial do buzzer
+const int pinNodemcu = 7;   // Pino conectado ao NodeMCU (comunicação serial)
+
+void setup() {
+  Serial.begin(9600);   // Inicia a comunicação serial
+  pinMode(Rele, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+  pinMode(pinNodemcu, OUTPUT);
+}
+
+void loop() {
+  int valor = analogRead(pinSensor);
+  valor = map(valor, 0, 1023, 0, 100); // Converte leitura para porcentagem
+  
+  Serial.println(valor); // Envia valor do sensor pela porta serial
+
+  if (valor >= ValDesarm) {
+    acionarAlarme();
+    enviarMensagemSerial("Alarme disparado!!!");
+    desativarAlarme();
+    delay(2000); // Aguarda
+  } else {
+    digitalWrite(Rele, LOW); // Mantém o relé desligado
+  }
+
+  delay(1000); // Intervalo entre leituras do sensor
+}
+
+// Funções para ações repetitivas
+void acionarAlarme() {
+  digitalWrite(Rele, HIGH);
+  tone(buzzer, frequencia);
+  Serial.println("Alarme acionado!");
+  delay(4000); // Tempo de acionamento do alarme
+  noTone(buzzer);
+}
+
+void desativarAlarme() {
+  digitalWrite(Rele, LOW);
+  Serial.println("Alarme desativado.");
+}
+
+// Função para enviar mensagem pela porta serial ao NodeMCU
+void enviarMensagemSerial(String message) {
+  Serial.println(message);
+}
