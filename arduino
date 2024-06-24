@@ -1,51 +1,87 @@
 // Definição de constantes
-const int pinSensor = A0;   // Pino do Sensor de Gás/Fumaça
-const int Rele = 3;         // Pino do Relé
-const int buzzer = 2;       // Pino do Buzzer
-const int ValDesarm = 1;    // Valor do Sensor para disparar o alarme
-const int frequencia = 4000; // Frequência inicial do buzzer
-const int pinNodemcu = 7;   // Pino conectado ao NodeMCU (comunicação serial)
+const int pinSensor = A0;         // Pino do Sensor de Gás/Fumaça
+const int Rele = 3;               // Pino do Relé
+const int buzzer = 2;             // Pino do Buzzer
+const int ValDesarm = 1;          // Valor do Sensor para disparar o alarme
+const int frequenciaEmergencia = 4000; // Frequência do som de emergência do buzzer
+const int pinNodemcu = 7;         // Pino conectado ao NodeMCU (comunicação serial)
+const int ledAlarme = 4;          // Pino do LED para indicar alarme
+const int duracaoEmergencia = 5000; // Duração do som de emergência em milissegundos
+const int histerese = 5;          // Valor de histerese para evitar disparos falsos
+const unsigned long intervaloLeitura = 1000; // Intervalo entre leituras do sensor
+
+bool alarmeAtivo = false;
+unsigned long ultimoTempoLeitura = 0;
 
 void setup() {
   Serial.begin(9600);   // Inicia a comunicação serial
   pinMode(Rele, OUTPUT);
   pinMode(buzzer, OUTPUT);
   pinMode(pinNodemcu, OUTPUT);
+  pinMode(ledAlarme, OUTPUT); // Configura o pino do LED como saída
 }
 
 void loop() {
-  int valor = analogRead(pinSensor);
-  valor = map(valor, 0, 1023, 0, 100); // Converte leitura para porcentagem
-  
-  Serial.println(valor); // Envia valor do sensor pela porta serial
+  unsigned long tempoAtual = millis();
 
-  if (valor >= ValDesarm) {
-    acionarAlarme();
-    enviarMensagemSerial("Alarme disparado!!!");
-    desativarAlarme();
-    delay(2000); // Aguarda
-  } else {
-    digitalWrite(Rele, LOW); // Mantém o relé desligado
+  // Realiza leitura do sensor a cada intervalo definido
+  if (tempoAtual - ultimoTempoLeitura >= intervaloLeitura) {
+    int valor = lerSensorGas();
+    Serial.println(valor); // Envia valor do sensor pela porta serial
+
+    if (valor >= ValDesarm && !alarmeAtivo) {
+      acionarAlarme();
+      enviarMensagemSerial("Alarme disparado!!!");
+      alarmeAtivo = true; // Marca o alarme como ativo
+    } else if (valor < (ValDesarm - histerese) && alarmeAtivo) {
+      desativarAlarme();
+      alarmeAtivo = false; // Marca o alarme como inativo
+      delay(2000); // Aguarda
+    }
+
+    ultimoTempoLeitura = tempoAtual; // Atualiza o último tempo de leitura
   }
 
-  delay(1000); // Intervalo entre leituras do sensor
+  // Verificações adicionais e operações podem ser adicionadas aqui
+
+  // Mantém o loop funcionando sem delay para garantir a responsividade
 }
 
-// Funções para ações repetitivas
+// Função para ler o sensor de gás/fumaça e retornar o valor em porcentagem
+int lerSensorGas() {
+  int valor = analogRead(pinSensor);
+  return map(valor, 0, 1023, 0, 100);
+}
+
+// Função para acionar o alarme
 void acionarAlarme() {
   digitalWrite(Rele, HIGH);
-  tone(buzzer, frequencia);
+  controlarBuzzer(true); // Liga o buzzer com som de emergência
+  digitalWrite(ledAlarme, HIGH); // Liga o LED de alarme
   Serial.println("Alarme acionado!");
-  delay(4000); // Tempo de acionamento do alarme
-  noTone(buzzer);
+  delay(duracaoEmergencia); // Mantém o alarme ativo por um período
 }
 
+// Função para desativar o alarme
 void desativarAlarme() {
   digitalWrite(Rele, LOW);
+  controlarBuzzer(false); // Desliga o buzzer
+  digitalWrite(ledAlarme, LOW); // Desliga o LED de alarme
   Serial.println("Alarme desativado.");
+}
+
+// Função para controlar o estado do buzzer
+void controlarBuzzer(bool ligado) {
+  if (ligado) {
+    tone(buzzer, frequenciaEmergencia); // Emite um som contínuo de emergência
+  } else {
+    noTone(buzzer);
+  }
 }
 
 // Função para enviar mensagem pela porta serial ao NodeMCU
 void enviarMensagemSerial(String message) {
-  Serial.println(message);
+  if (Serial && Serial.availableForWrite()) { // Verifica se a porta serial está disponível para escrita
+    Serial.println(message);
+  }
 }
