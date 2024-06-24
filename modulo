@@ -1,6 +1,8 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
+#include <WiFiClientSecure.h>
+#include <ESP8266HTTPClient.h>
 
 ESP8266WebServer server(80);
 
@@ -10,16 +12,15 @@ const char* phoneNumber = "5511946728323"; // Número no formato internacional
 const char* apiKey = "1414333";
 const char* serverAddress = "https://api.callmebot.com/whatsapp.php";
 
-SoftwareSerial SerialArduino(D5, D6); // RX, TX
-
 void setup() {
   Serial.begin(115200);
-  SerialArduino.begin(9600);
 
   // Tenta ler as credenciais WiFi salvas na EEPROM
   EEPROM.begin(512);
-  String savedSSID = EEPROM.readString(0);
-  String savedPassword = EEPROM.readString(savedSSID.length() + 1);
+  String savedSSID;
+  String savedPassword;
+  EEPROM.get(0, savedSSID);
+  EEPROM.get(savedSSID.length() + 1, savedPassword);
   EEPROM.end();
 
   // Se não houver credenciais salvas, inicia como ponto de acesso (AP)
@@ -43,11 +44,9 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  if (WiFi.status() == WL_CONNECTED && SerialArduino.available() > 0) {
-    String input = SerialArduino.readStringUntil('\n');
-    if (input.startsWith("Alarme acionado!")) {
-      enviarMensagemWhatsApp("Alarme acionado!");
-    }
+  if (WiFi.status() == WL_CONNECTED) {
+    // Aqui você pode inserir lógica para ler dados do seu dispositivo, como o acionamento de alarme.
+    // Exemplo: if (digitalRead(SEU_PINO) == HIGH) enviarMensagemWhatsApp("Alarme acionado!");
   }
   delay(1000);
 }
@@ -74,8 +73,8 @@ void handleSave() {
 
   // Salvar as novas credenciais na EEPROM
   EEPROM.begin(512);
-  EEPROM.writeString(0, newSSID);
-  EEPROM.writeString(newSSID.length() + 1, newPassword);
+  EEPROM.put(0, newSSID);
+  EEPROM.put(newSSID.length() + 1, newPassword);
   EEPROM.commit();
   EEPROM.end();
 
@@ -105,30 +104,47 @@ void conectarWiFi() {
   }
 }
 
+// Função para codificar URL manualmente
+String urlEncode(const String& message) {
+  const char* hex = "0123456789ABCDEF";
+  String encodedMessage = "";
+
+  for (size_t i = 0; i < message.length(); i++) {
+    char c = message.charAt(i);
+    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      encodedMessage += c;
+    } else if (c == ' ') {
+      encodedMessage += '+';
+    } else {
+      encodedMessage += '%';
+      encodedMessage += hex[(c >> 4) & 0xF];
+      encodedMessage += hex[c & 0xF];
+    }
+    yield(); // permite que o ESP8266 atenda a outras tarefas enquanto codifica
+  }
+
+  return encodedMessage;
+}
+
 // Função para enviar mensagem via WhatsApp com tratamento de erros
 void enviarMensagemWhatsApp(String message) {
-  String url = String(serverAddress) + "?phone=" + String(phoneNumber) + "&apikey=" + String(apiKey) + "&text=" + urlEncode(message);
   WiFiClientSecure client; // Cliente HTTP seguro para HTTPS
+  String encodedMessage = urlEncode(message);
+  String url = String(serverAddress) + "?phone=" + String(phoneNumber) + "&apikey=" + String(apiKey) + "&text=" + encodedMessage;
+
+  client.setInsecure(); // Ignora certificado SSL (para testes)
+
   HTTPClient http;
-
-  http.setTimeout(10000); // Timeout de 10 segundos para a conexão HTTP
-
-  try {
-    if (http.begin(client, url)) {
-      http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-      int httpResponseCode = http.POST(url);
-      if (httpResponseCode == 200) {
-        Serial.println("Mensagem enviada com sucesso");
-      } else {
-        Serial.print("Erro no envio da mensagem. Código de resposta HTTP: ");
-        Serial.println(httpResponseCode);
-      }
-      http.end(); // Fecha a conexão HTTP após o uso
+  if (http.begin(client, url)) { // Usa o cliente WiFiClientSecure e a URL
+    int httpResponseCode = http.GET();
+    if (httpResponseCode == HTTP_CODE_OK) {
+      Serial.println("Mensagem enviada com sucesso");
     } else {
-      Serial.println("Falha ao iniciar conexão HTTP");
+      Serial.print("Erro no envio da mensagem. Código de resposta HTTP: ");
+      Serial.println(httpResponseCode);
     }
-  } catch (const std::exception& e) {
-    Serial.print("Exceção durante o envio da mensagem: ");
-    Serial.println(e.what());
+    http.end(); // Fecha a conexão HTTP após o uso
+  } else {
+    Serial.println("Falha ao conectar ao servidor");
   }
 }
