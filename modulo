@@ -1,0 +1,56 @@
+#include <ESP8266WiFi.h>
+#include <SoftwareSerial.h>
+
+// Definição de constantes
+const char* ssid = "SEU_SSID";
+const char* password = "SUA_SENHA_WIFI";
+const char* phoneNumber = "SEU_NUMERO_DE_TELEFONE"; // Número no formato internacional
+const char* apiKey = "SEU_API_KEY";
+
+SoftwareSerial SerialArduino(D5, D6); // RX, TX
+
+void setup() {
+  Serial.begin(115200);  // Inicia a comunicação serial para debug
+  SerialArduino.begin(9600); // Inicia a comunicação serial com o Arduino
+
+  // Conecta ao WiFi
+  WiFi.begin(ssid, password);
+  Serial.println("Conectando ao WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Conectado ao WiFi com IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  if (SerialArduino.available() > 0) {
+    String input = SerialArduino.readStringUntil('\n');
+    if (input.startsWith("Alarme acionado!")) {
+      enviarMensagemWhatsApp("Alarme acionado!");
+    }
+  }
+  delay(1000);
+}
+
+// Função para enviar mensagem via WhatsApp usando CallMeBot
+void enviarMensagemWhatsApp(String message) {
+  String url = "http://api.callmebot.com/whatsapp.php?phone=" + String(phoneNumber) + "&apikey=" + String(apiKey) + "&text=" + urlEncode(message);
+  WiFiClient client;
+  HTTPClient http;
+  if (http.begin(client, url)) {
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    int httpResponseCode = http.POST(url);
+    if (httpResponseCode == 200) {
+      Serial.println("Mensagem enviada com sucesso");
+    } else {
+      Serial.print("Erro no envio da mensagem. Código de resposta HTTP: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end(); // Fecha a conexão HTTP após o uso
+  } else {
+    Serial.println("Falha ao iniciar conexão HTTP");
+  }
+}
