@@ -6,8 +6,8 @@ ESP8266WebServer server(80);
 
 const char* ssid = "SEU_SSID";
 const char* password = "SUA_SENHA_WIFI";
-const char* phoneNumber = "SEU_NUMERO_DE_TELEFONE"; // Número no formato internacional
-const char* apiKey = "SEU_API_KEY";
+const char* phoneNumber = "5511946728323"; // Número no formato internacional
+const char* apiKey = "1414333";
 const char* serverAddress = "https://api.callmebot.com/whatsapp.php";
 
 SoftwareSerial SerialArduino(D5, D6); // RX, TX
