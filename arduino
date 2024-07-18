@@ -1,98 +1,41 @@
-// void controlarBuzzerEmergencia() {
-  for (int i = 0; i < 30; i++) { // Repete 30 vezes
-    int frequencia = random(4000, 8000); // Frequência aleatória entre 4000 e 8000 Hz
-    int duracao = random(250, 1000); // Duração aleatória entre 250 e 1000 ms
-    tone(buzzer, frequencia, duracao);
-    delay(random(250, 1000)); // Pausa aleatória entre 250 e 1000 ms
-    noTone(buzzer);
-  }
-}
+const int pinSensor = A0; // Pino Sensor
+const int pinRele = 3; // Pino Relé
+const int pinBuzzer = 8; // Pino Buzzer
+const int valDesarm = 100; // Aumente o valor para reduzir falsos positivos
 
-
-// Definição de constantes
-const int pinSensor = A0;         // Pino do Sensor de Gás/Fumaça
-const int Rele = 3;               // Pino do Relé
-const int buzzer = 2;             // Pino do Buzzer
-const int ValDesarm = 1;          // Valor do Sensor para disparar o alarme
-const int frequenciaEmergencia = 4000; // Frequência do som de emergência do buzzer
-const int pinNodemcu = 7;         // Pino conectado ao NodeMCU (comunicação serial)
-const int ledAlarme = 4;          // Pino do LED para indicar alarme
-const int duracaoEmergencia = 5000; // Duração do som de emergência em milissegundos
-const int histerese = 5;          // Valor de histerese para evitar disparos falsos
-const unsigned long intervaloLeitura = 1000; // Intervalo entre leituras do sensor
-
-bool alarmeAtivo = false;
-unsigned long ultimoTempoLeitura = 0;
+int valor = 0;
 
 void setup() {
-  Serial.begin(9600);   // Inicia a comunicação serial
-  pinMode(Rele, OUTPUT);
-  pinMode(buzzer, OUTPUT);
-  pinMode(pinNodemcu, OUTPUT);
-  pinMode(ledAlarme, OUTPUT); // Configura o pino do LED como saída
+  Serial.begin(9600); // Inicia porta Serial em 9600 baud
+  pinMode(pinRele, OUTPUT);
+  pinMode(pinBuzzer, OUTPUT);
+  digitalWrite(pinRele, LOW); // Garante que o relé está desligado no início
+  noTone(pinBuzzer); // Garante que o buzzer está desligado no início
 }
 
 void loop() {
-  unsigned long tempoAtual = millis();
+  valor = analogRead(pinSensor); // Faz a leitura da entrada do sensor
+  valor = map(valor, 0, 1023, 0, 100); // Faz a conversão da variável para porcentagem
+  Serial.println(valor); // Escreve o valor na porta Serial
 
-  // Realiza leitura do sensor a cada intervalo definido
-  if (tempoAtual - ultimoTempoLeitura >= intervaloLeitura) {
-    int valor = lerSensorGas();
-    Serial.println(valor); // Envia valor do sensor pela porta serial
-
-    if (valor >= ValDesarm && !alarmeAtivo) {
-      acionarAlarme();
-      enviarMensagemSerial("Alarme disparado!!!");
-      alarmeAtivo = true; // Marca o alarme como ativo
-    } else if (valor < (ValDesarm - histerese) && alarmeAtivo) {
-      desativarAlarme();
-      alarmeAtivo = false; // Marca o alarme como inativo
-      delay(2000); // Aguarda
-    }
-
-    ultimoTempoLeitura = tempoAtual; // Atualiza o último tempo de leitura
-  }
-
-  // Verificações adicionais e operações podem ser adicionadas aqui
-
-  // Mantém o loop funcionando sem delay para garantir a responsividade
-}
-
-// Função para ler o sensor de gás/fumaça e retornar o valor em porcentagem
-int lerSensorGas() {
-  int valor = analogRead(pinSensor);
-  return map(valor, 0, 1023, 0, 100);
-}
-
-// Função para acionar o alarme
-void acionarAlarme() {
-  digitalWrite(Rele, HIGH);
-  controlarBuzzer(true); // Liga o buzzer com som de emergência
-  digitalWrite(ledAlarme, HIGH); // Liga o LED de alarme
-  Serial.println("Alarme acionado!");
-  delay(duracaoEmergencia); // Mantém o alarme ativo por um período
-}
-
-// Função para desativar o alarme
-void desativarAlarme() {
-  digitalWrite(Rele, LOW);
-  controlarBuzzer(false); // Desliga o buzzer
-  digitalWrite(ledAlarme, LOW); // Desliga o LED de alarme
-  Serial.println("Alarme desativado.");
-}
-
-// Função para controlar o estado do buzzer
-void controlarBuzzer(bool ligado) {
-  if (ligado) {
-    tone(buzzer, frequenciaEmergencia); // Emite um som contínuo de emergência
+  if (valor >= valDesarm) { // Condição, se valor continuar maior que valDesarm faça:
+    digitalWrite(pinRele, HIGH); // Liga relé para solenóide
+    Serial.println("ALARM"); // Envia "ALARM" pela porta serial
+    gerarAlarmeBuzzer(); // Função para gerar som contínuo no buzzer
+    delay(100); // Pequeno atraso antes da próxima verificação
   } else {
-    noTone(buzzer);
+    digitalWrite(pinRele, LOW); // Caso contrário, mantenha o relé desligado
+    noTone(pinBuzzer); // Para o som do buzzer
   }
+
+  delay(1000); // Aguardar 1 segundo antes de fazer a próxima leitura
 }
 
-// Função para enviar mensagem pela porta serial ao NodeMCU
-void enviarMensagemSerial(String message) {
-  if (Serial && Serial.availableForWrite()) { // Verifica se a porta serial está disponível para escrita
-    Serial.println(message);
+void gerarAlarmeBuzzer() {
+  for (int x = 0; x < 180; x++) {
+    float sinVal = (sin(x * (3.1412 / 180)));
+    int toneVal = 2000 + (int(sinVal * 1000));
+    analogWrite(pinBuzzer, toneVal); // Define a amplitude para 255 (máximo)
+    delay(2);
   }
 }
