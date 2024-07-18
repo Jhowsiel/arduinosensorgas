@@ -1,0 +1,5 @@
+Val = (sin(x * (3.1412 / 180))); // Converte graus em radianos para obter o valor
+      toneVal = 2000 + (int(sinVal * 1000)); // Gera uma frequência a partir do valor sin
+      tone(buzzer, toneVal); // Toca o som no buzzer
+      delay(2); // Atraso para controlar a duração do tom
+    }
