@@ -2,7 +2,6 @@
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
 #include <WiFiClientSecure.h>
-#include <ESP8266HTTPClient.h>
 
 ESP8266WebServer server(80);
 
@@ -10,7 +9,7 @@ const char* ssid = "SEU_SSID";
 const char* password = "SUA_SENHA_WIFI";
 const char* phoneNumber = "5511946728323"; // Número no formato internacional
 const char* apiKey = "1414333";
-const char* serverAddress = "https://api.callmebot.com/whatsapp.php";
+const char* serverAddress = "api.callmebot.com"; // Apenas o host sem protocolo
 
 void setup() {
   Serial.begin(115200);
@@ -130,20 +129,24 @@ String urlEncode(const String& message) {
 void enviarMensagemWhatsApp(String message) {
   WiFiClientSecure client; // Cliente HTTP seguro para HTTPS
   String encodedMessage = urlEncode(message);
-  String url = String(serverAddress) + "?phone=" + String(phoneNumber) + "&apikey=" + String(apiKey) + "&text=" + encodedMessage;
+  String url = "/whatsapp.php?phone=" + String(phoneNumber) + "&apikey=" + String(apiKey) + "&text=" + encodedMessage;
 
-  client.setInsecure(); // Ignora certificado SSL (para testes)
+  if (client.connect(serverAddress, 443)) { // Conexão HTTPS para o servidor
+    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+                 "Host: " + serverAddress + "\r\n" +
+                 "User-Agent: ESP8266\r\n" +
+                 "Connection: close\r\n\r\n");
 
-  HTTPClient http;
-  if (http.begin(client, url)) { // Usa o cliente WiFiClientSecure e a URL
-    int httpResponseCode = http.GET();
-    if (httpResponseCode == HTTP_CODE_OK) {
-      Serial.println("Mensagem enviada com sucesso");
-    } else {
-      Serial.print("Erro no envio da mensagem. Código de resposta HTTP: ");
-      Serial.println(httpResponseCode);
+    // Aguarda a resposta do servidor
+    while (client.connected()) {
+      String line = client.readStringUntil('\n');
+      if (line == "\r") {
+        break;
+      }
     }
-    http.end(); // Fecha a conexão HTTP após o uso
+
+    client.stop(); // Fecha a conexão
+    Serial.println("Mensagem enviada com sucesso");
   } else {
     Serial.println("Falha ao conectar ao servidor");
   }
