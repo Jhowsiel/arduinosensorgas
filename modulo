@@ -1,153 +1,75 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
-#include <EEPROM.h>
-#include <WiFiClientSecure.h>
+#include <Callmebot_ESP8266.h>
 
-ESP8266WebServer server(80);
-
-const char* ssid = "SEU_SSID";
-const char* password = "SUA_SENHA_WIFI";
-const char* phoneNumber = "5511946728323"; // Número no formato internacional
-const char* apiKey = "1414333";
-const char* serverAddress = "api.callmebot.com"; // Apenas o host sem protocolo
+// Credenciais WiFi e dados de API
+const char* ssid = "";
+const char* password = "";
+String phoneNumber = "";
+String apiKey = "";
+String alarmMessage = "Alarme Disparado! Verifique imediatamente!";
+String testMessage = "Teste de sistema: Mensagem enviada com sucesso!";
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200);  // Ajuste a velocidade serial para 115200
+  Serial.println("NodeMCU: Iniciando...");
 
-  // Tenta ler as credenciais WiFi salvas na EEPROM
-  EEPROM.begin(512);
-  String savedSSID;
-  String savedPassword;
-  EEPROM.get(0, savedSSID);
-  EEPROM.get(savedSSID.length() + 1, savedPassword);
-  EEPROM.end();
+  // Conexão WiFi
+  connectToWiFi();
 
-  // Se não houver credenciais salvas, inicia como ponto de acesso (AP)
-  if (savedSSID.length() == 0) {
-    WiFi.softAP(ssid, password);
-    Serial.println("Modo AP ativado. Conecte-se a:");
-    Serial.print(ssid);
-    return;
-  }
+  // Inicializar CallMeBot
+  Callmebot.begin();
 
-  // Conecta-se ao WiFi configurado
-  conectarWiFi();
-
-  // Inicializa o servidor web para configuração
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/save", HTTP_POST, handleSave);
-
-  server.begin();
+  // Envia mensagem de teste após conectar
+  sendWhatsAppMessage(testMessage);
 }
 
 void loop() {
-  server.handleClient();
+  // Verifica se há dados recebidos do Arduino Uno
+  if (Serial.available() > 0) {
+    String comandoRecebido = Serial.readStringUntil('\n');
+    Serial.print("NodeMCU: Comando Recebido: ");
+    Serial.println(comandoRecebido);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    // Aqui você pode inserir lógica para ler dados do seu dispositivo, como o acionamento de alarme.
-    // Exemplo: if (digitalRead(SEU_PINO) == HIGH) enviarMensagemWhatsApp("Alarme acionado!");
-  }
-  delay(1000);
-}
-
-void handleRoot() {
-  String html = "<html><body><h1>Configuração NodeMCU</h1>";
-  html += "<form method='POST' action='/save'>";
-  html += "SSID: <input type='text' name='ssid'><br>";
-  html += "Password: <input type='password' name='password'><br>";
-  html += "<input type='submit' value='Salvar'>";
-  html += "</form></body></html>";
-  server.send(200, "text/html", html);
-}
-
-void handleSave() {
-  String newSSID = server.arg("ssid");
-  String newPassword = server.arg("password");
-
-  // Validar entrada de dados
-  if (newSSID.length() == 0 || newPassword.length() == 0) {
-    server.send(400, "text/plain", "SSID e senha são obrigatórios");
-    return;
+    if (comandoRecebido.indexOf("ALARME") >= 0) {
+      Serial.println("NodeMCU: ALARM detectado - Enviando mensagem via WhatsApp");
+      sendWhatsAppMessage(alarmMessage);
+    } else {
+      Serial.println("NodeMCU: Comando não reconhecido.");
+    }
   }
 
-  // Salvar as novas credenciais na EEPROM
-  EEPROM.begin(512);
-  EEPROM.put(0, newSSID);
-  EEPROM.put(newSSID.length() + 1, newPassword);
-  EEPROM.commit();
-  EEPROM.end();
+  // Verifica o estado da conexão WiFi e tenta reconectar se necessário
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("NodeMCU: WiFi desconectado, tentando reconectar...");
+    connectToWiFi();  // Tenta reconectar ao WiFi se a conexão cair
+  }
 
-  server.send(200, "text/plain", "Configurações salvas. Reiniciando...");
-  delay(2000);
-  ESP.restart();
+  delay(100);  // Pequeno atraso para não sobrecarregar a leitura serial
 }
 
-// Função para conectar ao WiFi com tratamento de erros
-void conectarWiFi() {
+void connectToWiFi() {
   WiFi.begin(ssid, password);
-  Serial.println("Conectando ao WiFi...");
-  int tentativas = 0;
-  while (WiFi.status() != WL_CONNECTED && tentativas < 10) {
+  Serial.print("NodeMCU: Conectando ao WiFi");
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
     Serial.print(".");
-    tentativas++;
+    attempts++;
   }
-  Serial.println("");
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("Conectado ao WiFi com IP: ");
+    Serial.println("");
+    Serial.print("NodeMCU: Conectado ao WiFi com IP: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("Falha ao conectar ao WiFi. Reiniciando...");
-    delay(2000);
-    ESP.restart();
+    Serial.println("NodeMCU: Falha ao conectar ao WiFi.");
   }
 }
 
-// Função para codificar URL manualmente
-String urlEncode(const String& message) {
-  const char* hex = "0123456789ABCDEF";
-  String encodedMessage = "";
+void sendWhatsAppMessage(String msg) {
+  Serial.println("NodeMCU: Tentando enviar mensagem de WhatsApp...");
+  Callmebot.whatsappMessage(phoneNumber, apiKey, msg);  // Tenta enviar a mensagem de WhatsApp
 
-  for (size_t i = 0; i < message.length(); i++) {
-    char c = message.charAt(i);
-    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-      encodedMessage += c;
-    } else if (c == ' ') {
-      encodedMessage += '+';
-    } else {
-      encodedMessage += '%';
-      encodedMessage += hex[(c >> 4) & 0xF];
-      encodedMessage += hex[c & 0xF];
-    }
-    yield(); // permite que o ESP8266 atenda a outras tarefas enquanto codifica
-  }
-
-  return encodedMessage;
-}
-
-// Função para enviar mensagem via WhatsApp com tratamento de erros
-void enviarMensagemWhatsApp(String message) {
-  WiFiClientSecure client; // Cliente HTTP seguro para HTTPS
-  String encodedMessage = urlEncode(message);
-  String url = "/whatsapp.php?phone=" + String(phoneNumber) + "&apikey=" + String(apiKey) + "&text=" + encodedMessage;
-
-  if (client.connect(serverAddress, 443)) { // Conexão HTTPS para o servidor
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-                 "Host: " + serverAddress + "\r\n" +
-                 "User-Agent: ESP8266\r\n" +
-                 "Connection: close\r\n\r\n");
-
-    // Aguarda a resposta do servidor
-    while (client.connected()) {
-      String line = client.readStringUntil('\n');
-      if (line == "\r") {
-        break;
-      }
-    }
-
-    client.stop(); // Fecha a conexão
-    Serial.println("Mensagem enviada com sucesso");
-  } else {
-    Serial.println("Falha ao conectar ao servidor");
-  }
+  Serial.println("NodeMCU: Mensagem de WhatsApp enviada.");
+  Serial.println("NodeMCU: Detalhes do debug:");
+  Serial.println(Callmebot.debug()); // Imprime informações de depuração adicionais
 }
