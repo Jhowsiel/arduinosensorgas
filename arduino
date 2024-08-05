@@ -1,41 +1,67 @@
-const int pinSensor = A0; // Pino Sensor
-const int pinRele = 3; // Pino Relé
-const int pinBuzzer = 8; // Pino Buzzer
-const int valDesarm = 100; // Aumente o valor para reduzir falsos positivos
+#include <SoftwareSerial.h>
+#include <math.h>  // Para a função sin()
 
-int valor = 0;
+const int pinSensor = A0;   // Pino do Sensor de Gás
+const int pinRele = 3;      // Pino do Relé
+const int pinBuzzer = 8;    // Pino do Buzzer
+const int valDesarm = 10;  // Limite para disparar o alarme
+
+// Pinos de software serial para comunicação com o NodeMCU
+SoftwareSerial softSerial(10, 11); // RX, TX (ajustado para pinos recomendados)
 
 void setup() {
-  Serial.begin(9600); // Inicia porta Serial em 9600 baud
+  Serial.begin(115200);        // Inicializa a porta Serial
+  softSerial.begin(115200);    // Inicializa SoftwareSerial com 115200 bps
   pinMode(pinRele, OUTPUT);
   pinMode(pinBuzzer, OUTPUT);
-  digitalWrite(pinRele, LOW); // Garante que o relé está desligado no início
-  noTone(pinBuzzer); // Garante que o buzzer está desligado no início
+  digitalWrite(pinRele, LOW); // Desliga o relé inicialmente
+  noTone(pinBuzzer);          // Desliga o buzzer inicialmente
+
+  Serial.println("Arduino: Iniciando...");
 }
 
 void loop() {
-  valor = analogRead(pinSensor); // Faz a leitura da entrada do sensor
-  valor = map(valor, 0, 1023, 0, 100); // Faz a conversão da variável para porcentagem
-  Serial.println(valor); // Escreve o valor na porta Serial
+  int valorSensor = analisarSensorGas(pinSensor);
+  
+  Serial.print("Arduino: Valor do Sensor de Gás: ");
+  Serial.println(valorSensor);
 
-  if (valor >= valDesarm) { // Condição, se valor continuar maior que valDesarm faça:
-    digitalWrite(pinRele, HIGH); // Liga relé para solenóide
-    Serial.println("ALARM"); // Envia "ALARM" pela porta serial
-    gerarAlarmeBuzzer(); // Função para gerar som contínuo no buzzer
-    delay(100); // Pequeno atraso antes da próxima verificação
+  if (valorSensor >= valDesarm) {
+    Serial.println("Arduino: ALARME - Sensor acima do limite!");
+    digitalWrite(pinRele, HIGH);
+    softSerial.println("ALARME");  // Envia comando para o NodeMCU
+    gerarAlarmeBuzzer();
   } else {
-    digitalWrite(pinRele, LOW); // Caso contrário, mantenha o relé desligado
-    noTone(pinBuzzer); // Para o som do buzzer
+    digitalWrite(pinRele, LOW);
+    noTone(pinBuzzer);
   }
 
-  delay(1000); // Aguardar 1 segundo antes de fazer a próxima leitura
+  if (softSerial.available()) {
+    String mensagemRecebida = softSerial.readStringUntil('\n');
+    Serial.print("Arduino: Mensagem Recebida do NodeMCU: ");
+    Serial.println(mensagemRecebida);
+  }
+
+  delay(3000);  // Atraso para a próxima leitura
+}
+
+int analisarSensorGas(int pin) {
+  int leitura = analogRead(pin);        // Lê o valor do sensor
+  if (leitura < 0 || leitura > 1023) {  // Verifica leitura válida
+    Serial.println("Arduino: Erro na leitura do sensor!");
+    return 0;
+  }
+  int valor = map(leitura, 0, 1023, 0, 100);  // Converte para porcentagem
+  return valor;
 }
 
 void gerarAlarmeBuzzer() {
-  for (int x = 0; x < 180; x++) {
-    float sinVal = (sin(x * (3.1412 / 180)));
-    int toneVal = 2000 + (int(sinVal * 1000));
-    analogWrite(pinBuzzer, toneVal); // Define a amplitude para 255 (máximo)
-    delay(2);
+  for (int x = 0; x < 40; x++) {
+    float sinVal = sin(x * (PI / 180));  // Calcula o valor seno
+    int toneVal = 2000 + (int(sinVal * 1500));  // Calcula o tom
+    analogWrite(pinBuzzer, toneVal);
+    delay(200);
+    noTone(pinBuzzer);
+    delay(200);
   }
 }
